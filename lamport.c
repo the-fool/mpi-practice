@@ -10,15 +10,15 @@ typedef struct message_s {
     int time_stamp;
     int dest;
   } Message;
+MPI_Datatype MESSAGE;
 
-void interact();
-void slave();
+void master(int comm_sz);
+void slave(int rank, int comm_sz);
 void create_struct_datatype();
 
 int main(int argc, char **argv) 
 {
   int rank, comm_sz, local_t;
-  MPI_Datatype MESSAGE;
     
   MPI_Init(NULL, NULL);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -29,17 +29,10 @@ int main(int argc, char **argv)
   local_t = 0;
   
   if (rank != 0) {
-    Message recv;
-    MPI_Recv(&recv, 1, MESSAGE, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-    printf("I am rank %d, I got the string %s\n", rank, recv.string); 
+    slave(rank, comm_sz); 
   }
   else {
-    int q;
-    for (q = 1; q < comm_sz; q++) {
-      Message send;
-      sprintf(send.string, "Master to rank: %d", q);
-      MPI_Send(&send, 1, MESSAGE, q, 0, MPI_COMM_WORLD);
-    }
+    master(comm_sz);
   }
 
   MPI_Finalize();
@@ -60,4 +53,65 @@ void create_struct_datatype(MPI_Datatype *dt) {
   MPI_Type_commit(dt);
 }
   
+void slave(int rank, int comm_sz) {
+  Message msg;
+  MPI_Status status;
+  int local_t = 0;
+  while (1) {
+    MPI_Recv(&msg, 1, MESSAGE, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &status);
+    local_t++;
     
+    if (msg.dest == 0) {
+      if ( strcmp(msg.string, "end") == 0) {
+	break;
+      }
+      printf("Rank: %d executing task.\n", rank);
+    }  
+    else if (status.MPI_SOURCE == 0) {
+      printf("Rank: %d sending message to %d: %s\n", rank, msg.dest, msg.string);
+      msg.time_stamp = local_t;
+      MPI_Send(&msg, 1, MESSAGE, msg.dest, 0, MPI_COMM_WORLD); 
+    }  
+    else {
+      printf("Rank: %d received message from %d: %s\n", rank, status.MPI_SOURCE, msg.string);
+    }
+    printf("Rank: %d local time: %d\n", rank, local_t);
+  }
+}
+
+void master(int comm_sz) {
+  Message msg;
+  char buf[MAX_STRING + 12];
+  char *directive; 
+  const char delim[2]=" ";
+  int dest;
+
+  printf("Usage: (exec | send) pid1 [pid2 message]\n");
+  printf("Enter 'end' to quit\n");
+
+  while (1) {
+    fgets(buf, MAX_STRING, stdin);
+    directive = strtok(buf, delim); 
+    
+    if (strncmp(directive, "end", 3) == 0)
+      break;
+    dest = atoi(strtok(NULL, delim));
+    if ( strncmp(directive, "send", 4) == 0 ) {
+      msg.dest = atoi(strtok(NULL, delim));
+      strcpy(msg.string, strtok(NULL, delim));
+    }
+    else {
+      msg.dest = 0;
+      printf("Execing\n");
+      sprintf(msg.string, "hello rank: %d", dest);
+    }
+    
+    MPI_Send(&msg, 1, MESSAGE, dest, 0, MPI_COMM_WORLD);
+  }
+  
+  sprintf(msg.string, "end");
+  for (dest = 1; dest < comm_sz; dest++) {
+    MPI_Send(&msg, 1, MESSAGE, dest, 0, MPI_COMM_WORLD);
+  }
+
+}
