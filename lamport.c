@@ -60,9 +60,9 @@ void slave(int rank, int comm_sz) {
   while (1) {
     MPI_Recv(&msg, 1, MESSAGE, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &status);
     local_t++;
-    
     if (msg.dest == 0) {
       if ( strcmp(msg.string, "end") == 0) {
+	printf("Process %d exitng\n", rank);
 	break;
       }
       printf("Rank: %d executing task.\n", rank);
@@ -74,6 +74,7 @@ void slave(int rank, int comm_sz) {
     }  
     else {
       printf("Rank: %d received message from %d: %s\n", rank, status.MPI_SOURCE, msg.string);
+      local_t = (msg.time_stamp >= local_t ? msg.time_stamp + 1 : local_t);
     }
     printf("Rank: %d local time: %d\n", rank, local_t);
   }
@@ -81,7 +82,7 @@ void slave(int rank, int comm_sz) {
 
 void master(int comm_sz) {
   Message msg;
-  char buf[MAX_STRING + 12];
+  char buf[MAX_STRING + 12], string[MAX_STRING];
   char *directive; 
   const char delim[2]=" ";
   int dest;
@@ -91,6 +92,11 @@ void master(int comm_sz) {
 
   while (1) {
     fgets(buf, MAX_STRING, stdin);
+    char *p;
+    if ( (p = strchr(buf, '\n')) != NULL) *p = '\0';
+
+    strcpy(string, buf);
+
     directive = strtok(buf, delim); 
     
     if (strncmp(directive, "end", 3) == 0)
@@ -98,11 +104,11 @@ void master(int comm_sz) {
     dest = atoi(strtok(NULL, delim));
     if ( strncmp(directive, "send", 4) == 0 ) {
       msg.dest = atoi(strtok(NULL, delim));
-      strcpy(msg.string, strtok(NULL, delim));
+      p = strtok(NULL, delim);
+      strcpy(msg.string, string + (p - buf));
     }
     else {
       msg.dest = 0;
-      printf("Execing\n");
       sprintf(msg.string, "hello rank: %d", dest);
     }
     
@@ -110,8 +116,8 @@ void master(int comm_sz) {
   }
   
   sprintf(msg.string, "end");
+  msg.dest = 0;
   for (dest = 1; dest < comm_sz; dest++) {
     MPI_Send(&msg, 1, MESSAGE, dest, 0, MPI_COMM_WORLD);
   }
-
 }
