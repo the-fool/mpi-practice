@@ -2,13 +2,15 @@
 #include <mpi.h>
 #include <time.h>
 #include <math.h>
+#include <stdlib.h>
 
 double TrapezoidSum(double, double, int, double);
 double f(double);
 void interact(int, int, double*, double*, int*);
 
-int main(void) {
-  int rank, comm_sz, n, local_n;
+int main(int argc, char** argv) {
+  int rank, comm_sz;
+  unsigned long int n, local_n;
   double a, b, h, local_a, local_b;
   double local_area, total_area;
   int source;
@@ -18,9 +20,11 @@ int main(void) {
   MPI_Init(NULL, NULL);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   MPI_Comm_size(MPI_COMM_WORLD, &comm_sz);
-
-  interact(rank, comm_sz, &a, &b, &n);
-
+  
+  a = 0; 
+  b = (double) atoi(argv[1]); 
+  n = strtoul(argv[2], NULL, 10);
+  
   h = (b - a) / n;
   local_n = n/comm_sz;
 
@@ -40,7 +44,8 @@ int main(void) {
   }
  
   if (rank == 0) {
-    printf("Trap count: %d.  Integral range: %f to %f \n", n, a, b);
+    printf("Number of nodes: %d\n", comm_sz);
+    printf("Integral range: %f to %f \n", a, b);
     printf("Area estimate: %.15e\n", total_area);
     end = clock();
     printf("time taken: %.17e\n", (double)(end - begin)); 
@@ -72,14 +77,9 @@ void interact(int rank, int comm_sz, double* ap, double* bp, int* np) {
   if (rank == 0) {
     printf("Enter range of integral a, b, and number of trapezoids n\n");
     scanf("%lf %lf %d", ap, bp, np);
-    for (send = 1; send < comm_sz; send++) {
-      MPI_Send(ap, 1, MPI_DOUBLE, send, 0, MPI_COMM_WORLD);
-      MPI_Send(bp, 1, MPI_DOUBLE, send, 0, MPI_COMM_WORLD);
-      MPI_Send(np, 1, MPI_INT, send, 0, MPI_COMM_WORLD);
-    }
-  } else {
-    MPI_Recv(ap, 1, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-    MPI_Recv(bp, 1, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-    MPI_Recv(np, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-  }
+  }  
+  MPI_Bcast(ap, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+  MPI_Bcast(bp, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+  MPI_Bcast(np, 1, MPI_INT, 0, MPI_COMM_WORLD);
+ 
 }
