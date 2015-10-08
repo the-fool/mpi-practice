@@ -5,11 +5,13 @@
 #include <stddef.h>
 
 #define MAX_STRING 1024
+
 typedef struct message_s {
     char string[MAX_STRING];
     int time_stamp;
     int dest;
   } Message;
+
 MPI_Datatype MESSAGE;
 
 void master(int comm_sz);
@@ -18,15 +20,13 @@ void create_struct_datatype();
 
 int main(int argc, char **argv) 
 {
-  int rank, comm_sz, local_t;
+  int rank, comm_sz;
     
   MPI_Init(NULL, NULL);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   MPI_Comm_size(MPI_COMM_WORLD, &comm_sz);
 
   create_struct_datatype(&MESSAGE);
-
-  local_t = 0;
   
   if (rank != 0) {
     slave(rank, comm_sz); 
@@ -97,21 +97,42 @@ void master(int comm_sz) {
 
     strcpy(string, buf);
 
-    directive = strtok(buf, delim); 
+    if ( (directive = strtok(buf, delim)) == NULL)
+      continue; 
     
     if (strncmp(directive, "end", 3) == 0)
       break;
-    dest = atoi(strtok(NULL, delim));
-    if ( strncmp(directive, "send", 4) == 0 ) {
-      msg.dest = atoi(strtok(NULL, delim));
-      p = strtok(NULL, delim);
-      strcpy(msg.string, string + (p - buf));
+    
+    if ( (p = strtok(NULL,delim)) == NULL) {
+      printf("Invalid syntax\n");
+      continue;
     }
-    else {
+    if ( (dest = atoi(p)) >= comm_sz || (dest < 1) ) { 
+      printf("Invalid worker rank: %d\n", dest);
+      continue;
+    }
+    
+    if ( strncmp(directive, "send", 4) == 0 ) {
+      if ( (p = strtok(NULL, delim)) == NULL) {
+	printf("Invalid syntax\n");
+	continue;
+      }
+      if ( (msg.dest = atoi(p)) >= comm_sz || (msg.dest < 1) ) {
+	printf("Invalid worker rank: %d\n", msg.dest);
+	continue;
+      }
+      p = strtok(NULL, delim);
+      strcpy(msg.string, string + (p - buf)); // get the untokenized message
+    }
+    else if ( strncmp(directive, "exec", 4) == 0 ) {
       msg.dest = 0;
       sprintf(msg.string, "hello rank: %d", dest);
     }
-    
+    else {
+      printf("Unkown command: %s\n", directive);
+      continue;
+    }
+
     MPI_Send(&msg, 1, MESSAGE, dest, 0, MPI_COMM_WORLD);
   }
   
