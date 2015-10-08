@@ -5,6 +5,7 @@
 
 double TrapezoidSum(double, double, int, double);
 double f(double);
+void interact(int, int, double*, double*, int*);
 
 int main(void) {
   int rank, comm_sz, n, local_n;
@@ -12,14 +13,13 @@ int main(void) {
   double local_area, total_area;
   int source;
 
-  a = 0.0; b = 6.0;
-  n = 1024 * 1024 * 128;
-  
   clock_t begin, end;
 
   MPI_Init(NULL, NULL);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   MPI_Comm_size(MPI_COMM_WORLD, &comm_sz);
+
+  interact(rank, comm_sz, &a, &b, &n);
 
   h = (b - a) / n;
   local_n = n/comm_sz;
@@ -64,4 +64,22 @@ double TrapezoidSum(double a, double b, int n, double base) {
 
 double f(double x) {
   return (sin(x) + 5);
+}
+
+void interact(int rank, int comm_sz, double* ap, double* bp, int* np) {
+  int send;
+
+  if (rank == 0) {
+    printf("Enter range of integral a, b, and number of trapezoids n\n");
+    scanf("%lf %lf %d", ap, bp, np);
+    for (send = 1; send < comm_sz; send++) {
+      MPI_Send(ap, 1, MPI_DOUBLE, send, 0, MPI_COMM_WORLD);
+      MPI_Send(bp, 1, MPI_DOUBLE, send, 0, MPI_COMM_WORLD);
+      MPI_Send(np, 1, MPI_INT, send, 0, MPI_COMM_WORLD);
+    }
+  } else {
+    MPI_Recv(ap, 1, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    MPI_Recv(bp, 1, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    MPI_Recv(np, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+  }
 }
