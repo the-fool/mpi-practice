@@ -6,6 +6,7 @@
 
 #define MAX_STRING 1024
 #define MAX_VECTOR 40
+
 typedef struct message_s {
     char string[MAX_STRING];
     int vector[MAX_VECTOR];
@@ -17,7 +18,9 @@ MPI_Datatype MESSAGE;
 void master(int comm_sz);
 void slave(int rank, int comm_sz);
 void create_struct_datatype();
-
+void mergeVectors();
+char* vectorToString();
+ 
 int main(int argc, char **argv) 
 {
   int rank, comm_sz;
@@ -74,14 +77,14 @@ void slave(int rank, int comm_sz) {
     }  
     else if (status.MPI_SOURCE == 0) {
       printf("Rank: %d sending message to %d: %s\n", rank, msg.dest, msg.string);
-      mergeVectors(msg.time_stamp, local_v);
+      mergeVectors(msg.vector, local_v);
       MPI_Send(&msg, 1, MESSAGE, msg.dest, 0, MPI_COMM_WORLD); 
     }  
     else {
       printf("Rank: %d received message from %d: %s\n", rank, status.MPI_SOURCE, msg.string);
-      local_t = (msg.time_stamp >= local_t ? msg.time_stamp + 1 : local_t);
+      mergeVectors(msg.vector, local_v);
     }
-    printf("Rank: %d local time: %s\n", rank, local_t);
+    printf("Rank: %d local time: %s\n", rank, vectorToString(local_v, comm_sz));
   }
 }
 
@@ -91,7 +94,7 @@ void mergeVectors(int* dest, int* src, int comm_sz) {
     dest[q] = (dest[q] >= src[q] ? dest[q] : src[q]);
   }
 }
-char * printVector(int *v, int comm_sz) {
+char * vectorToString(int *v, int comm_sz) {
   int i;
   char * str = malloc(3*comm_sz + 2); 
   // room for each element, plus commas, spaces, and parens
