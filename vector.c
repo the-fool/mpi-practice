@@ -61,6 +61,7 @@ void slave(int rank, int comm_sz) {
   int local_v[comm_sz];
   MPI_Status status;
   int q;
+  char * strVector;
 
   for (q = 0; q < comm_sz; q++) 
     local_v[q] = 0;
@@ -77,32 +78,35 @@ void slave(int rank, int comm_sz) {
     }  
     else if (status.MPI_SOURCE == 0) {
       printf("Rank: %d sending message to %d: %s\n", rank, msg.dest, msg.string);
-      mergeVectors(msg.vector, local_v);
+      mergeVectors(msg.vector, local_v, comm_sz);
       MPI_Send(&msg, 1, MESSAGE, msg.dest, 0, MPI_COMM_WORLD); 
     }  
     else {
       printf("Rank: %d received message from %d: %s\n", rank, status.MPI_SOURCE, msg.string);
-      mergeVectors(msg.vector, local_v);
+      mergeVectors(msg.vector, local_v, comm_sz);
     }
-    printf("Rank: %d local time: %s\n", rank, vectorToString(local_v, comm_sz));
+    strVector = vectorToString(local_v, comm_sz);
+    printf("Rank: %d local time: %s\n", rank, strVector);
+    free(strVector);
   }
 }
 
-void mergeVectors(int* dest, int* src, int comm_sz) {
+void mergeVectors(int* msg, int* loc, int comm_sz) {
   int q;
   for (q = 0; q < comm_sz; q++) {
-    dest[q] = (dest[q] >= src[q] ? dest[q] : src[q]);
+    if (msg[q] < loc[q]) msg[q] = loc[q];
+    else loc[q] = msg[q];
   }
 }
 char * vectorToString(int *v, int comm_sz) {
-  int i;
-  char * str = malloc(3*comm_sz + 2); 
-  // room for each element, plus commas, spaces, and parens
+  int i, n = 0;
+  char * str = malloc(MAX_STRING); // who knows how big our time-stamps will get? 
   str[0] = '(';
   for (i = 0; i < comm_sz; i++) {
-    sprintf(str + 3 * i + 1, "%d, ", v[i]);
+    n += sprintf(str + n + 1, "%d, ", v[i]);
   }
-  sprintf(str + 3 * comm_sz + 1, ")"); // terminating \0
+  sprintf(str + n -1, ")"); // terminating \0
+  return str;
 }
   
 void master(int comm_sz) {
@@ -110,8 +114,11 @@ void master(int comm_sz) {
   char buf[MAX_STRING + 12], string[MAX_STRING];
   char *directive; 
   const char delim[2]=" ";
-  int dest;
+  int dest, q;
 
+  for (q = 0; q < comm_sz; q++)
+    msg.vector[q] = 0;
+  
   printf("Usage: (exec | send) pid1 [pid2 message]\n");
   printf("Enter 'end' to quit\n");
 
@@ -147,7 +154,9 @@ void master(int comm_sz) {
 	continue;
       }
       p = strtok(NULL, delim);
-      strcpy(msg.string, string + (p - buf)); // get the untokenized message
+      if (p != '\0')
+	strcpy(msg.string, string + (p - buf)); // get the untokenized message
+      else strcpy(msg.string, "<NONE>");
     }
     else if ( strncmp(directive, "exec", 4) == 0 ) {
       msg.dest = 0;
