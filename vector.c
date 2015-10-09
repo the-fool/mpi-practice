@@ -43,6 +43,7 @@ int main(int argc, char **argv)
 }
 
 void create_struct_datatype(MPI_Datatype *dt, int comm_sz) {
+  // create our special struct datatype for message-passing
   int nitems = 3;
   int blocklengths[3] = { MAX_STRING, MAX_VECTOR, 1};
   MPI_Datatype types[3] = {MPI_CHAR, MPI_INT, MPI_INT};
@@ -60,9 +61,10 @@ void slave(int rank, int comm_sz) {
   Message msg;
   int local_v[comm_sz];
   MPI_Status status;
-  int q;
-  char * strVector;
-
+  int q; // disposable index
+  char * strVector; // pointer for string representation of vector
+  
+  // initialize vector
   for (q = 0; q < comm_sz; q++) 
     local_v[q] = 0;
   
@@ -98,9 +100,10 @@ void mergeVectors(int* msg, int* loc, int comm_sz) {
     else loc[q] = msg[q];
   }
 }
+
 char * vectorToString(int *v, int comm_sz) {
   int i, n = 0;
-  char * str = malloc(MAX_STRING); // who knows how big our time-stamps will get? 
+  char * str = malloc(MAX_STRING); // who knows how many chars our time-stamps will require? 
   str[0] = '(';
   for (i = 0; i < comm_sz; i++) {
     n += sprintf(str + n + 1, "%d, ", v[i]);
@@ -116,6 +119,7 @@ void master(int comm_sz) {
   const char delim[2]=" ";
   int dest, q;
 
+  // initialize msg vector
   for (q = 0; q < comm_sz; q++)
     msg.vector[q] = 0;
   
@@ -125,8 +129,11 @@ void master(int comm_sz) {
   while (1) {
     fgets(buf, MAX_STRING, stdin);
     char *p;
-    if ( (p = strchr(buf, '\n')) != NULL) *p = '\0';
 
+    // strip newline
+    if ( (p = strchr(buf, '\n')) != NULL) *p = '\0';
+    
+    // subsequent strtok will destroy original string, so it's copied
     strcpy(string, buf);
 
     if ( (directive = strtok(buf, delim)) == NULL)
@@ -143,7 +150,6 @@ void master(int comm_sz) {
       printf("Invalid worker rank: %d\n", dest);
       continue;
     }
-    
     if ( strncmp(directive, "send", 4) == 0 ) {
       if ( (p = strtok(NULL, delim)) == NULL) {
 	printf("Invalid syntax\n");
@@ -155,11 +161,15 @@ void master(int comm_sz) {
       }
       p = strtok(NULL, delim);
       if (p != '\0')
-	strcpy(msg.string, string + (p - buf)); // get the untokenized message
-      else strcpy(msg.string, "<NONE>");
+	// get the untokenized message
+        // via pointer offset
+	strcpy(msg.string, string + (p - buf)); 
+      else 
+	strcpy(msg.string, "<NONE>");
     }
     else if ( strncmp(directive, "exec", 4) == 0 ) {
       msg.dest = 0;
+      // arbitrary garbage message
       sprintf(msg.string, "hello rank: %d", dest);
     }
     else {
@@ -168,8 +178,9 @@ void master(int comm_sz) {
     }
 
     MPI_Send(&msg, 1, MESSAGE, dest, 0, MPI_COMM_WORLD);
-  }
+  } // end while-loop
   
+  // tell all processes to finalize
   sprintf(msg.string, "end");
   msg.dest = 0;
   for (dest = 1; dest < comm_sz; dest++) {
