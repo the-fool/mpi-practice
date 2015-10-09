@@ -81,7 +81,7 @@ void slave(int rank, int comm_sz) {
       printf("Rank: %d received message from %d: %s\n", rank, status.MPI_SOURCE, msg.string);
       local_t = (msg.time_stamp >= local_t ? msg.time_stamp + 1 : local_t);
     }
-    printf("Rank: %d local time: %d\n", rank, local_t);
+    printf("Rank: %d local time: %s\n", rank, local_t);
   }
 }
 
@@ -90,6 +90,16 @@ void mergeVectors(int* dest, int* src, int comm_sz) {
   for (q = 0; q < comm_sz; q++) {
     dest[q] = (dest[q] >= src[q] ? dest[q] : src[q]);
   }
+}
+char * printVector(int *v, int comm_sz) {
+  int i;
+  char * str = malloc(3*comm_sz + 2); 
+  // room for each element, plus commas, spaces, and parens
+  str[0] = '(';
+  for (i = 0; i < comm_sz; i++) {
+    sprintf(str + 3 * i + 1, "%d, ", v[i]);
+  }
+  sprintf(str + 3 * comm_sz + 1, ")"); // terminating \0
 }
   
 void master(int comm_sz) {
@@ -154,3 +164,4 @@ void master(int comm_sz) {
     MPI_Send(&msg, 1, MESSAGE, dest, 0, MPI_COMM_WORLD);
   }
 }
+
