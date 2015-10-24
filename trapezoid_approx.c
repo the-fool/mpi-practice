@@ -23,7 +23,7 @@ int main(int argc, char** argv) {
   
   a = 0; 
   b = (double) atoi(argv[1]); 
-  n = strtoul(argv[2], NULL, 10);
+  n = 1024 * 1024 * 128;
   
   h = (b - a) / n;
   local_n = n/comm_sz;
@@ -44,10 +44,10 @@ int main(int argc, char** argv) {
   }
  
   if (rank == 0) {
+    end = clock();
     printf("Number of nodes: %d\n", comm_sz);
     printf("Integral range: %f to %f \n", a, b);
     printf("Area estimate: %.15e\n", total_area);
-    end = clock();
     printf("time taken: %.17e\n", (double)(end - begin)); 
   }
   MPI_Finalize();
