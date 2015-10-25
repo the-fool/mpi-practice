@@ -3,6 +3,7 @@
 #include <mpi.h>
 #include <string.h>
 #include <stddef.h>
+#include <unistd.h>
 
 #define MAX_STRING 1024
 #define MAX_VECTOR 40
@@ -81,16 +82,24 @@ void slave(int rank, int comm_sz) {
   label[2] = '\0';
 
   while (1) {
-    MPI_Recv(&msg, 1, MESSAGE, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &status);
+    MPI_Recv(&msg, 1, MESSAGE, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+    
+    if (status.MPI_TAG == 1) {
+      strVector = vectorToString(local_v, comm_sz);
+      sprintf(msg.string, "Process %d report: Event %s - Logical: %d - Vector: %s", 
+	      rank, label, local_l, strVector);
+      free(strVector);
+      MPI_Send(&msg, 1, MESSAGE, 0, 0, MPI_COMM_WORLD);
+      break;
+    }
+
     local_l++;
     local_v[rank]++;
     label[1]++;
     if (msg.dest == 0) {
-      if ( strcmp(msg.string, "end") == 0) {
-	printf("Process %d exitng\n", rank);
-	break;
-      }
       printf("Executing event %s in process %d.\n", label, rank);
+      sprintf(msg.string, "receievd");
+      MPI_Send(&msg, 1, MESSAGE, 0, 0, MPI_COMM_WORLD);
     }  
     else if (status.MPI_SOURCE == 0) {
       printf("Message sent event %s from process %d to process %d: %s\n", 
@@ -98,17 +107,22 @@ void slave(int rank, int comm_sz) {
       mergeVectors(msg.vector, local_v, comm_sz);
       msg.lamport = local_l;
       MPI_Send(&msg, 1, MESSAGE, msg.dest, 0, MPI_COMM_WORLD); 
+      
+      sprintf(msg.string, "receievd");
+      MPI_Send(&msg, 1, MESSAGE, 0, 0, MPI_COMM_WORLD);
     }  
     else {
       printf("Message received event %s from process %d by process %d: %s\n", 
 	     label, status.MPI_SOURCE, rank, msg.string);
       mergeVectors(msg.vector, local_v, comm_sz);
-      local_l = (msg.lamport >= local_l ? msg.lamport : local_l);
+      local_l = (msg.lamport >= (local_l - 1)? msg.lamport + 1 : local_l);
     }
+
     strVector = vectorToString(local_v, comm_sz);
     printf("The Logical/Vector time of event %s at process %d is: %d / %s\n", 
 	   label, rank, local_l, strVector);
     free(strVector);
+    
   }
 }
 
@@ -122,9 +136,10 @@ void mergeVectors(int* msg, int* loc, int comm_sz) {
 
 char * vectorToString(int *v, int comm_sz) {
   int i, n = 0;
+   // for this assignment, ignore Master vector clock
   char * str = malloc(MAX_STRING); // who knows how many chars our time-stamps will require? 
   str[0] = '(';
-  for (i = 0; i < comm_sz; i++) {
+  for (i = 1; i < comm_sz; i++) {
     n += sprintf(str + n + 1, "%d, ", v[i]);
   }
   sprintf(str + n -1, ")"); // terminating \0
@@ -133,77 +148,30 @@ char * vectorToString(int *v, int comm_sz) {
   
 void master(int comm_sz) {
   Message msg;
-  char buf[MAX_STRING + 12], string[MAX_STRING];
-  char *directive; 
-  const char delim[2]=" ";
+  MPI_Status status;
   int dest, q;
-
+  int directives[8][2] = {1,2, 3,0, 4,0, 2,1, 3,2, 3,4, 2,0, 4,0};
+  
   // initialize msg vector
   for (q = 0; q < comm_sz; q++)
     msg.vector[q] = 0;
-  
-  printf("Usage: (exec | send) pid1 [pid2 message]\n");
-  printf("Enter 'end' to quit\n");
 
-  while (1) {
-    fgets(buf, MAX_STRING, stdin);
-    char *p;
-
-    // strip newline
-    if ( (p = strchr(buf, '\n')) != NULL) *p = '\0';
-    
-    // subsequent strtok will destroy original string, so it's copied
-    strcpy(string, buf);
-
-    if ( (directive = strtok(buf, delim)) == NULL)
-      continue; 
-    
-    if (strncmp(directive, "end", 3) == 0)
-      break;
-    
-    if ( (p = strtok(NULL,delim)) == NULL) {
-      printf("Invalid syntax\n");
-      continue;
-    }
-    if ( (dest = atoi(p)) >= comm_sz || (dest < 1) ) { 
-      printf("Invalid worker rank: %d\n", dest);
-      continue;
-    }
-    if ( strncmp(directive, "send", 4) == 0 ) {
-      if ( (p = strtok(NULL, delim)) == NULL) {
-	printf("Invalid syntax\n");
-	continue;
-      }
-      if ( (msg.dest = atoi(p)) >= comm_sz || (msg.dest < 1) ) {
-	printf("Invalid worker rank: %d\n", msg.dest);
-	continue;
-      }
-      p = strtok(NULL, delim);
-      if (p != '\0')
-	// get the untokenized message
-        // via pointer offset
-	strcpy(msg.string, string + (p - buf)); 
-      else 
-	strcpy(msg.string, "<NONE>");
-    }
-    else if ( strncmp(directive, "exec", 4) == 0 ) {
-      msg.dest = 0;
-      // arbitrary garbage message
-      sprintf(msg.string, "hello rank: %d", dest);
-    }
-    else {
-      printf("Unkown command: %s\n", directive);
-      continue;
-    }
-
+  // process the script
+  for (q=0; q < 8; q++) {
+    sprintf(msg.string, "Master event %d", q);
+    dest = directives[q][0];
+    msg.dest = directives[q][1];
     MPI_Send(&msg, 1, MESSAGE, dest, 0, MPI_COMM_WORLD);
-  } // end while-loop
-  
+    MPI_Recv(&msg, 1, MESSAGE, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &status);
+  }
+
+  sleep(1);
   // tell all processes to finalize
-  sprintf(msg.string, "end");
   msg.dest = 0;
   for (dest = 1; dest < comm_sz; dest++) {
-    MPI_Send(&msg, 1, MESSAGE, dest, 0, MPI_COMM_WORLD);
+    MPI_Send(&msg, 1, MESSAGE, dest, 1, MPI_COMM_WORLD);
+    MPI_Recv(&msg, 1, MESSAGE, dest, 0, MPI_COMM_WORLD, &status);
+    printf("%s\n", msg.string);
   }
 }
 
