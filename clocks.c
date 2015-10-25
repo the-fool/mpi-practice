@@ -5,8 +5,8 @@
 #include <stddef.h>
 #include <unistd.h>
 
-#define MAX_STRING 1024
-#define MAX_VECTOR 40
+#define MAX_STRING 1024 
+#define MAX_VECTOR 40  // no. of total processes
 
 typedef struct message_s {
   char string[MAX_STRING];
@@ -37,8 +37,10 @@ int main(int argc, char **argv)
     printf("I am process %d out of %d processes in the system\n", rank, comm_sz);
     slave(rank, comm_sz); 
   }
+ 
   else {
-    printf("I am master process %d out of %d processes in the system\n", rank, comm_sz);
+    sleep(1);
+    printf("I am master process %d out of %d processes in the system\n\n", rank, comm_sz);
     master(comm_sz);
   }
 
@@ -82,10 +84,9 @@ void slave(int rank, int comm_sz) {
   label[1] = '@'; // == 'A' - 1
   label[2] = '\0';
 
-  
-  while (1) {
+   while (1) {
     MPI_Recv(&msg, 1, MESSAGE, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
-    
+    sleep(1);
     // On finalize, MPI_TAG == 1
     if (status.MPI_TAG == 1) {
       strVector = vectorToString(local_v, comm_sz);
@@ -124,7 +125,7 @@ void slave(int rank, int comm_sz) {
 
     // print status to stdout
     strVector = vectorToString(local_v, comm_sz);
-    printf("The Logical/Vector time of event %s at process %d is: %d / %s\n", 
+    printf("The Logical/Vector time of event %s at process %d is: %d / %s\n\n", 
 	   label, rank, local_l, strVector);
     free(strVector);
   }
@@ -168,7 +169,7 @@ void master(int comm_sz) {
     dest = directives[q][0];
     msg.dest = directives[q][1];
     MPI_Send(&msg, 1, MESSAGE, dest, 0, MPI_COMM_WORLD);
-    MPI_Recv(&msg, 1, MESSAGE, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &status);
+    MPI_Recv(&msg, 1, MESSAGE, dest, 0, MPI_COMM_WORLD, &status);
   }
 
   sleep(1);
