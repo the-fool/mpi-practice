@@ -103,11 +103,11 @@ void slave(int rank, int comm_sz) {
 
     if (status.MPI_SOURCE == 0) {
       if (msg.dest == 0) {
-	printf("Executing event %s in process %d.\n", label, rank);
+	printf("Executing event %s in process %d.\n", label, rank - 1);
       }
       else {
 	printf("Message sent event %s from process %d to process %d: %s\n", 
-	       label, rank, msg.dest, msg.string);
+	       label, rank - 1, msg.dest, msg.string);
 	for (q = 0; q < comm_sz; q++) {
 	  msg.vector[q] = local_v[q];
 	}
@@ -118,7 +118,7 @@ void slave(int rank, int comm_sz) {
       MPI_Send(&msg, 1, MESSAGE, 0, 0, MPI_COMM_WORLD);     
     } else {
       printf("Message received event %s from process %d by process %d: %s\n", 
-	     label, status.MPI_SOURCE, rank, msg.string);
+	     label, status.MPI_SOURCE, rank - 1, msg.string);
       mergeVectors(msg.vector, local_v, comm_sz);
       local_l = (msg.lamport >= (local_l - 1)? msg.lamport + 1 : local_l);
     }
@@ -126,7 +126,7 @@ void slave(int rank, int comm_sz) {
     // print status to stdout
     strVector = vectorToString(local_v, comm_sz);
     printf("The Logical/Vector time of event %s at process %d is: %d / %s\n\n", 
-	   label, rank, local_l, strVector);
+	   label, rank - 1, local_l, strVector);
     free(strVector);
   }
 }
