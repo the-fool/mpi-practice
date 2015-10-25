@@ -7,7 +7,6 @@
 
 #define MAX_STRING 1024
 #define MAX_VECTOR 40
-#define MAX_LABEL 16
 
 typedef struct message_s {
   char string[MAX_STRING];
@@ -68,9 +67,11 @@ void slave(int rank, int comm_sz) {
   int local_v[comm_sz];
   int local_l;
   MPI_Status status;
+  
   int q; // disposable index
   char * strVector; // pointer for string representation of vector
   char label[3]; // storage for local event label 
+  
   // initialize vector
   for (q = 0; q < comm_sz; q++) 
     local_v[q] = 0;
@@ -96,21 +97,25 @@ void slave(int rank, int comm_sz) {
     local_l++;
     local_v[rank]++;
     label[1]++;
+
     if (msg.dest == 0) {
       printf("Executing event %s in process %d.\n", label, rank);
       sprintf(msg.string, "receievd");
       MPI_Send(&msg, 1, MESSAGE, 0, 0, MPI_COMM_WORLD);
-    }  
+    }
+  
     else if (status.MPI_SOURCE == 0) {
       printf("Message sent event %s from process %d to process %d: %s\n", 
 	     label, rank, msg.dest, msg.string);
-      mergeVectors(msg.vector, local_v, comm_sz);
+      //mergeVectors(msg.vector, local_v, comm_sz);
+      msg.vector[rank] = local_v[rank];
       msg.lamport = local_l;
       MPI_Send(&msg, 1, MESSAGE, msg.dest, 0, MPI_COMM_WORLD); 
       
       sprintf(msg.string, "receievd");
       MPI_Send(&msg, 1, MESSAGE, 0, 0, MPI_COMM_WORLD);
-    }  
+    }
+  
     else {
       printf("Message received event %s from process %d by process %d: %s\n", 
 	     label, status.MPI_SOURCE, rank, msg.string);
@@ -118,6 +123,7 @@ void slave(int rank, int comm_sz) {
       local_l = (msg.lamport >= (local_l - 1)? msg.lamport + 1 : local_l);
     }
 
+    // print status to stdout
     strVector = vectorToString(local_v, comm_sz);
     printf("The Logical/Vector time of event %s at process %d is: %d / %s\n", 
 	   label, rank, local_l, strVector);
@@ -136,13 +142,14 @@ void mergeVectors(int* msg, int* loc, int comm_sz) {
 
 char * vectorToString(int *v, int comm_sz) {
   int i, n = 0;
-   // for this assignment, ignore Master vector clock
-  char * str = malloc(MAX_STRING); // who knows how many chars our time-stamps will require? 
+  char * str = malloc(MAX_STRING);  
   str[0] = '(';
-  for (i = 1; i < comm_sz; i++) {
-    n += sprintf(str + n + 1, "%d, ", v[i]);
-  }
-  sprintf(str + n -1, ")"); // terminating \0
+  for (i = 1; i < comm_sz; i++) 
+    // begin at i = 1 in order to ignore Master process at 0
+    {
+      n += sprintf(str + n + 1, "%d, ", v[i]);
+    }
+  sprintf(str + n -1, ")");
   return str;
 }
   
@@ -166,7 +173,8 @@ void master(int comm_sz) {
   }
 
   sleep(1);
-  // tell all processes to finalize
+
+  // signal all processes to finalize
   msg.dest = 0;
   for (dest = 1; dest < comm_sz; dest++) {
     MPI_Send(&msg, 1, MESSAGE, dest, 1, MPI_COMM_WORLD);
