@@ -64,7 +64,7 @@ void create_struct_datatype(MPI_Datatype *dt, int comm_sz) {
   
 void slave(int rank, int comm_sz) {
   Message msg;
-  int local_v[comm_sz];
+  int local_v[MAX_VECTOR];
   int local_l;
   MPI_Status status;
   
@@ -82,9 +82,11 @@ void slave(int rank, int comm_sz) {
   label[1] = '@'; // == 'A' - 1
   label[2] = '\0';
 
+  
   while (1) {
     MPI_Recv(&msg, 1, MESSAGE, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
     
+    // On finalize, MPI_TAG == 1
     if (status.MPI_TAG == 1) {
       strVector = vectorToString(local_v, comm_sz);
       sprintf(msg.string, "Process %d report: Event %s - Logical: %d - Vector: %s", 
@@ -98,25 +100,22 @@ void slave(int rank, int comm_sz) {
     local_v[rank]++;
     label[1]++;
 
-    if (msg.dest == 0) {
-      printf("Executing event %s in process %d.\n", label, rank);
+    if (status.MPI_SOURCE == 0) {
+      if (msg.dest == 0) {
+	printf("Executing event %s in process %d.\n", label, rank);
+      }
+      else {
+	printf("Message sent event %s from process %d to process %d: %s\n", 
+	       label, rank, msg.dest, msg.string);
+	for (q = 0; q < comm_sz; q++) {
+	  msg.vector[q] = local_v[q];
+	}
+	msg.lamport = local_l;
+	MPI_Send(&msg, 1, MESSAGE, msg.dest, 0, MPI_COMM_WORLD); 
+      }
       sprintf(msg.string, "receievd");
-      MPI_Send(&msg, 1, MESSAGE, 0, 0, MPI_COMM_WORLD);
-    }
-  
-    else if (status.MPI_SOURCE == 0) {
-      printf("Message sent event %s from process %d to process %d: %s\n", 
-	     label, rank, msg.dest, msg.string);
-      //mergeVectors(msg.vector, local_v, comm_sz);
-      msg.vector[rank] = local_v[rank];
-      msg.lamport = local_l;
-      MPI_Send(&msg, 1, MESSAGE, msg.dest, 0, MPI_COMM_WORLD); 
-      
-      sprintf(msg.string, "receievd");
-      MPI_Send(&msg, 1, MESSAGE, 0, 0, MPI_COMM_WORLD);
-    }
-  
-    else {
+      MPI_Send(&msg, 1, MESSAGE, 0, 0, MPI_COMM_WORLD);     
+    } else {
       printf("Message received event %s from process %d by process %d: %s\n", 
 	     label, status.MPI_SOURCE, rank, msg.string);
       mergeVectors(msg.vector, local_v, comm_sz);
@@ -128,7 +127,6 @@ void slave(int rank, int comm_sz) {
     printf("The Logical/Vector time of event %s at process %d is: %d / %s\n", 
 	   label, rank, local_l, strVector);
     free(strVector);
-    
   }
 }
 
@@ -157,6 +155,7 @@ void master(int comm_sz) {
   Message msg;
   MPI_Status status;
   int dest, q;
+  // a series of tuples denoting destination of message, and route for response
   int directives[8][2] = {1,2, 3,0, 4,0, 2,1, 3,2, 3,4, 2,0, 4,0};
   
   // initialize msg vector
